@@ -5,7 +5,10 @@ import mysql.connector
 import datetime as dt
 import pygame as py
 import time
-import hashlib 
+import hashlib
+import csv
+import fpdf
+import matplotlib.pyplot as plt
 
 def hash_pin(pin):
     # Returns the SHA-256 hash of the given pin string
@@ -25,9 +28,12 @@ class ATM_GUI:
         # Security Settings
         self.max_login_attempts = 3
         self.login_attempts = 0
-        self.session_timeout_ms = 60000  # 60 seconds timeout
+        self.session_timeout_ms = 120000  # 120 seconds timeout
         self.last_activity_time = time.time()
         self.timeout_id = None
+
+        #default theme
+        self.current_theme ="dark"
 
         self.languages = {
     "English": {
@@ -72,7 +78,10 @@ class ATM_GUI:
                 "5. How do I update my profile? - Use the 'Update Profile' option.\n"),
         "feedback_prompt": "Enter your feedback below:",
         "submit_feedback": "Submit Feedback",
-        "feedback_thankyou": "Thank you for your feedback!"
+        "feedback_thankyou": "Thank you for your feedback!",
+        "view_analytics": "View Analytics",
+        "switch_to_light": "Switch to Light Mode",
+        "switch_to_dark": "Switch to Dark Mode"
     },
     "Spanish": {
         "menu": "Menú del Cajero",
@@ -116,7 +125,10 @@ class ATM_GUI:
                 "5. ¿Cómo actualizo mi perfil? - Use la opción 'Actualizar Perfil'.\n"),
         "feedback_prompt": "Ingrese su retroalimentación a continuación:",
         "submit_feedback": "Enviar Retroalimentación",
-        "feedback_thankyou": "¡Gracias por su retroalimentación!"
+        "feedback_thankyou": "¡Gracias por su retroalimentación!",
+        "view_analytics": "Ver Análisis",
+        "switch_to_light": "Cambiar a modo claro",
+        "switch_to_dark": "Cambiar a modo oscuro"
     },
     "Hindi": {
         "menu": "एटीएम मेनू",
@@ -126,7 +138,7 @@ class ATM_GUI:
         "transaction_history": "लेन-देन इतिहास",
         "update_pin": "पिन अपडेट करें",
         "update_profile": "प्रोफ़ाइल अपडेट करें",
-        "delete_account": "खाता हटाएँ",
+        "delete_account": "खाता हटाएं",
         "transfer_money": "पैसे ट्रांसफर करें",
         "help_feedback": "सहायता और फीडबैक",
         "exit": "बाहर जाएं",
@@ -160,9 +172,14 @@ class ATM_GUI:
                 "5. मैं अपनी प्रोफ़ाइल कैसे अपडेट करूँ? - 'प्रोफ़ाइल अपडेट करें' विकल्प का उपयोग करें।\n"),
         "feedback_prompt": "नीचे अपना फीडबैक दर्ज करें:",
         "submit_feedback": "फीडबैक सबमिट करें",
-        "feedback_thankyou": "आपके फीडबैक के लिए धन्यवाद!"
+        "feedback_thankyou": "आपके फीडबैक के लिए धन्यवाद!",
+        "view_analytics": "एनालिटिक्स देखें",
+        "switch_to_light": "लाइट मोड पर स्विच करें",
+        "switch_to_dark": "डार्क मोड पर स्विच करें"
     }
 }
+
+
 
         self.current_language = "English"
         
@@ -203,8 +220,6 @@ class ATM_GUI:
         else:
             # Schedule another check after the timeout period.
             self.timeout_id = self.root.after(self.session_timeout_ms, self.check_session_timeout)
-
-    
 
     def create_language_selection_screen(self):
         self.clear_window()
@@ -256,8 +271,13 @@ class ATM_GUI:
         ttk.Button(frame, text=lang_text["delete_account"], command=self.delete_account_screen).pack(pady=5)
 
         ttk.Button(frame, text=lang_text["transfer_money"], command=self.transfer_money_screen).pack(pady=5)
+        ttk.Button(frame, text=lang_text["view_analytics"], command=self.show_spending_trends).pack(pady=5)
          # Add Help & Feedback button
         ttk.Button(frame, text=lang_text["help_feedback"], command=self.help_feedback_screen).pack(pady=5)
+        
+        # Theme toggle button 
+        toggle_text =lang_text['switch_to_light'] if self.current_theme == "dark" else lang_text["switch_to_dark"]
+        ttk.Button(frame, text=toggle_text, command=self.toggle_theme).pack(pady=5)
         ttk.Button(frame, text=lang_text["exit"], command=self.create_login_screen).pack(pady=10)
     
     def delete_account_screen(self):
@@ -440,8 +460,72 @@ class ATM_GUI:
             
             tree.pack(pady=10)
         
+        # Add "Export CSV" and "Export PDF" buttons at the bottom
+        ttk.Button(frame, text="Export CSV", command=self.export_transactions_csv).pack(pady=10)
+        ttk.Button(frame, text="Export PDF", command=self.export_transactions_pdf).pack(pady=5)
         ttk.Button(frame, text=lang_text["back"], command=self.create_menu_screen).pack(pady=10)
+
+    def export_transactions_csv(self, filename="transactions.csv"):
+        lang_text = self.languages[self.current_language]
+        self.cursor.execute("SELECT id, pin, type, amount, timestamp FROM transactions WHERE pin = %s ORDER BY timestamp", (self.current_pin,))
+        transactions = self.cursor.fetchall()
+        
+        if not transactions:
+            messagebox.showinfo(lang_text["error"], "No transactions to export.")
+            return
+        
+        try:
+            with open(filename, "w", newline="") as csvfile:
+                writer = csv.writer(csvfile)
+                # Write header row
+                writer.writerow(["ID", "PIN", "Type", "Amount", "Timestamp"])
+                # Write transaction data rows
+                for trans in transactions:
+                    writer.writerow(trans)
+            messagebox.showinfo(lang_text["success"], f"Transaction history exported to {filename}")
+        except Exception as e:
+            messagebox.showerror(lang_text["error"], f"Failed to export CSV: {e}")
     
+    def export_transactions_pdf(self, filename="transactions.pdf"):
+        lang_text = self.languages[self.current_language]
+        # Retrieve transactions for the logged in user
+        self.cursor.execute("SELECT id, pin, type, amount, timestamp FROM transactions WHERE pin = %s ORDER BY timestamp", (self.current_pin,))
+        transactions = self.cursor.fetchall()
+        
+        if not transactions:
+            messagebox.showinfo(lang_text["error"], "No transactions to export.")
+            return
+        
+        try:
+            pdf = fpdf.FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 16)
+            pdf.cell(200, 10, txt="Transaction History", ln=True, align='C')
+            pdf.ln(10)
+            
+            pdf.set_font("Arial", "B", 12)
+            # Table header
+            pdf.cell(20, 10, "ID", 1)
+            pdf.cell(40, 10, "Type", 1)
+            pdf.cell(40, 10, "Amount", 1)
+            pdf.cell(80, 10, "Timestamp", 1)
+            pdf.ln()
+            
+            pdf.set_font("Arial", "", 12)
+            # Table rows
+            for trans in transactions:
+                id_, pin, typ, amount, timestamp = trans
+                pdf.cell(20, 10, str(id_), 1)
+                pdf.cell(40, 10, str(typ), 1)
+                pdf.cell(40, 10, f"${amount:.2f}", 1)
+                pdf.cell(80, 10, str(timestamp), 1)
+                pdf.ln()
+            
+            pdf.output(filename)
+            messagebox.showinfo(lang_text["success"], f"Transaction history exported to {filename}")
+        except Exception as e:
+            messagebox.showerror(lang_text["error"], f"Failed to export PDF: {e}")
+
     def update_pin_screen(self):
         self.reset_session_timeout()
         self.clear_window()
@@ -563,6 +647,35 @@ class ATM_GUI:
         ttk.Button(frame, text=lang_text["transfer_money"], command=process_transfer).pack(pady=10)
         ttk.Button(frame, text=lang_text["back"], command=self.create_menu_screen).pack(pady=10)
     
+    def show_spending_trends(self):
+        lang_text = self.languages[self.current_language]
+        # Retrieve only withdrawal transactions
+        self.cursor.execute("SELECT amount, timestamp FROM transactions WHERE pin = %s AND type = 'Withdraw' ORDER BY timestamp", (self.current_pin,))
+        data = self.cursor.fetchall()
+        
+        if not data:
+            messagebox.showinfo(lang_text["error"], "No spending data available.")
+            return
+        
+        amounts = []
+        dates = []
+        for amount, ts in data:
+            amounts.append(amount)
+            # Assuming ts is a datetime string; convert to datetime object
+            try:
+                dates.append(dt.datetime.strptime(str(ts), "%Y-%m-%d %H:%M:%S"))
+            except ValueError:
+                dates.append(ts)
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(dates, amounts, marker="o", linestyle="-")
+        plt.xlabel("Date")
+        plt.ylabel("Withdrawal Amount")
+        plt.title("Spending Trends Over Time")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
+
     def help_feedback_screen(self):
         self.clear_window()
         self.reset_session_timeout()
@@ -611,6 +724,24 @@ class ATM_GUI:
         
         ttk.Button(frame, text=lang_text["submit_feedback"], command=submit_feedback).pack(pady=10)
         ttk.Button(frame, text=lang_text["back"], command=self.create_menu_screen).pack(pady=10)
+    
+    def toggle_theme(self):
+        # Toggle between 'dark' and 'light' themes
+        if self.current_theme == "dark":
+            self.current_theme = "light"
+            # Configure styles for light theme
+            self.style.configure("TFrame", background="white")
+            self.style.configure("TLabel", background="white", foreground="black", font=("Arial", 14))
+            self.style.configure("TButton", font=("Arial", 12), padding=5, background="#007BFF", foreground="dark blue")
+        else:
+            self.current_theme = "dark"
+            # Configure styles for dark theme
+            self.style.configure("TFrame", background="#222831")
+            self.style.configure("TLabel", background="#222831", foreground="#EEEEEE", font=("Arial", 14))
+            self.style.configure("TButton", font=("Arial", 12), padding=5, background="#00ADB5", foreground="black")
+        
+        # Recreate the menu screen to apply changes
+        self.create_menu_screen()
 
     def clear_window(self):
         for widget in self.root.winfo_children():
