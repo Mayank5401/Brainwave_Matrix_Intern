@@ -1,1 +1,53 @@
+# ATM System with Tkinter and MySQL
+
+A user-friendly ATM system built using **Python (Tkinter GUI)** and **MySQL database**. It allows users to securely manage accounts, perform transactions, view analytics, and customize settings.
+
+## 🚀 Features
+
+✅ **User Authentication**: Secure login system with PIN encryption  
+✅ **Multi-Language Support**: English, Spanish, and Hindi  
+✅ **Account Management**: Create, update, and delete accounts  
+✅ **Transaction Handling**: Deposit, withdraw, and transfer money  
+✅ **Transaction History**: View past transactions with CSV export  
+✅ **Security Enhancements**:  
+   - Hashed PIN storage  
+   - Login attempt limit  
+   - Auto session timeout  
+✅ **Dark/Light Mode Toggle**  
+✅ **Analytics Dashboard**: Visual spending trends  
+✅ **Help & Feedback Section**: FAQs and user feedback submission   
+
+---
+
+## 🛠️ Installation  
+
+### **1️⃣ Clone the Repository**  
+
+git clone https://github.com/Mayank5401/Brainwave_Matrix_Intern.git
+cd Brainwave_Matrix_Intern
+
+2️⃣ Install Dependencies
+Ensure Python and MySQL are installed. Then, install required Python libraries:
+pip install mysql-connector-python tk pandas matplotlib
+
+3️⃣ Set Up MySQL Database
+Open MySQL and create the database:
+
+CREATE DATABASE atm_db;
+
+Import the provided SQL file (atm_db.sql) into MySQL.
+
+Update database credentials in atm_gui.py
+self.db = mysql.connector.connect(
+    host="localhost",
+    user="your_username",
+    password="your_password",
+    database="atm_db"
+)
+
+4️⃣ Run the Application
+python atm_gui.py
+
+
+
 
